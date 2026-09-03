@@ -4,12 +4,6 @@ A systematic, documented data cleaning and analysis pipeline applied to a 10,000
 
 ---
 
-## Live Demo
-
-Streamlit EDA app: https://dirty-cafe-data-cleaning-and-eda-with-app-dashboard-pidwy9biqm.streamlit.app/
-
----
-
 ## Dashboard
 
  (![Cafe Sales Overview dashboard](https://github.com/KathituCodes/Dirty-Cafe-Data-Cleaning-and-EDA-with-Streamlit-Dashboard/blob/04094698541743a4f193b9fca9ce020897f8423e/Doc/Cafe%20sales%20overview.PNG)
