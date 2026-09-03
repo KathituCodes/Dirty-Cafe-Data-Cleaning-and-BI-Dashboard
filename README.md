@@ -12,7 +12,7 @@ Streamlit EDA app: https://dirty-cafe-data-cleaning-and-eda-with-app-dashboard-p
 
 ## Dashboard
 
-![Cafe Sales Overview dashboard](Doc/Cafe_sales_overview.PNG)
+![Cafe Sales Overview dashboard](Doc/Cafe sales overview.PNG)
 
 Interactive Power BI report built on the cleaned dataset: four KPI cards (Total Revenue, Avg Order Value, Total Transactions, Total Units Sold), cross-filtering Location and Payment Method slicers, and four charts (revenue by item, by day of week, and by month). Full build details, DAX measures, and layout notes are in [`Doc/Cafe_Sales_Project_Documentation.docx`](Doc/Cafe_Sales_Project_Documentation.docx).
 
