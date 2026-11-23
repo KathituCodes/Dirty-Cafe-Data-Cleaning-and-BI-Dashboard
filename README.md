@@ -6,7 +6,7 @@ I turned a deliberately corrupted 10,000-row cafe sales export into a validated,
 
 ## Dashboard
 
- ![Cafe Sales Overview dashboard](https://github.com/KathituCodes/Dirty-Cafe-Data-Cleaning-and-BI-Dashboard/blob/f5cfcf6fbbc58e87c1255b6df7eba88013747ac3/Doc/Dirty%20cafe%20Sales.PNG)
+ ![Cafe Sales Overview dashboard](https://github.com/KathituCodes/Dirty-Cafe-Data-Cleaning-and-BI-Dashboard/blob/8ba65f36234ef3bd1eecd5be171b988aa70d61cd/BI%20Dashboard/Dashboard%20Screenshot.PNG)
 
 
 | At a glance | |
