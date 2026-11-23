@@ -1,6 +1,6 @@
-# Cafe Sales: End-to-End Data Wrangling, EDA, and Dashboarding
+# Cafe Sales: Data Cleaning, EDA and Power BI Dashboard
 
-A systematic, documented data cleaning and analysis pipeline applied to a 10,000-row intentionally corrupted cafe sales dataset. The project demonstrates multi-layered handling of real-world data quality problems: type corruption, placeholder errors, missing value imputation via unit-economics logic and distribution-preserving sampling, outlier validation, and an interactive Power BI dashboard built on the cleaned output.
+I turned a deliberately corrupted 10,000-row cafe sales export into a validated, analysis-ready dataset of **9,518 transactions**, then built a Power BI dashboard on top of it. Along the way I found and fixed a silent imputation bug in my own pipeline, and added automated checks so it can't happen again.
 
 ---
 
@@ -8,89 +8,89 @@ A systematic, documented data cleaning and analysis pipeline applied to a 10,000
 
  ![Cafe Sales Overview dashboard](https://github.com/KathituCodes/Dirty-Cafe-Data-Cleaning-and-BI-Dashboard/blob/f5cfcf6fbbc58e87c1255b6df7eba88013747ac3/Doc/Dirty%20cafe%20Sales.PNG)
 
-Interactive Power BI report built on the cleaned dataset: four KPI cards (Total Revenue, Avg Order Value, Total Transactions, Total Units Sold), cross-filtering Location and Payment Method slicers, and four charts (revenue by item, by day of week, and by month). Full build details, DAX measures, and layout notes are in [`Doc/Cafe_Sales_Project_Documentation.docx`](Doc/Cafe_Sales_Project_Documentation.docx).
 
----
-
-## Project Objectives
-
-- Transform a raw, "dirty" dataset riddled with `ERROR` and `UNKNOWN` placeholders, wrong data types, and structural gaps into a fully analysis-ready table.
-- Apply principled, documented decisions at every cleaning step rather than brute-force dropping or mode-filling.
-- Derive business insights from the cleaned data on revenue drivers, payment preferences, location behavior, and sales trends, stated at the confidence level the data actually supports.
-
----
-
-## Dataset
-
-| Property | Detail |
+| At a glance | |
 |---|---|
-| Source | Synthetic dirty cafe sales data |
-| Raw shape | 10,000 rows x 8 columns |
-| Cleaned shape | 9,469 rows x 8 columns (531 rows dropped as unrecoverable) |
-| Columns | Transaction ID, Item, Quantity, Price Per Unit, Total Spent, Payment Method, Location, Transaction Date |
-| Known issues | `ERROR` / `UNKNOWN` text in numerical fields, all columns loaded as `object`, missing values across every column (up to 39.6% in one column), financial inconsistencies |
+| Rows kept | 9,518 of 10,000 (95.2%) |
+| Missing cells | 10,082 before, 0 after |
+| Rule checks passed | One price per item, Quantity x Price = Total, no duplicates, valid quantities |
+| Total revenue (2023) | $84,901.50 across 28,757 units |
+| Reproducible | Seeded random steps; re-running gives the identical file |
 
 ---
 
-## Cleaning Pipeline
+## Situation
 
-### 1. Initial Audit
-- Shape inspection, `df.info()`, and unique value enumeration across all object columns.
-- Confirmed all columns loaded as `object` due to string placeholders in numeric fields.
-- Generated automated profiling reports (before and after) using `ydata-profiling`.
+A cafe's point-of-sale export for 2023 (10,000 receipts, 8 columns) was too broken to report on:
 
-### 2. Placeholder Standardization
-- Replaced `ERROR` and `UNKNOWN` with `np.nan` across the entire dataframe for uniform null handling.
+- **Fake values:** cells held the text `ERROR` or `UNKNOWN` instead of data, so automated profiling under-reported the damage (6,826 blanks found, versus 10,082 once placeholders were counted).
+- **Wrong types:** every column loaded as text, so no totals, averages or date analysis were possible.
+- **Heavy gaps in two fields:** Location was missing in 39.6% of rows and Payment Method in 31.8%, far more than any other column. That pattern points to the till not recording them, not to random errors.
 
-### 3. Data Type Conversion
-- Converted `Quantity`, `Price Per Unit`, and `Total Spent` from object to numeric using `pd.to_numeric(errors='coerce')`.
-- Converted `Transaction Date` to datetime using `pd.to_datetime(errors='coerce')`.
-- `errors='coerce'` was chosen over strict parsing so unparseable values become NaN instead of halting the pipeline.
+## Task
 
-### 4. Missing Value Imputation
+Produce a dataset fit for revenue reporting and a Power BI dashboard, keeping as many real transactions as possible **without inventing facts**. The cleaned file had to meet six rules: no missing values, correct data types, one price per menu item, Quantity x Price = Total on every row, category mixes preserved, and identical output on every run.
 
-| Column | Strategy | Rationale |
+My guiding principle: **calculate a value exactly where the other columns allow it, estimate it statistically only where no exact route exists, and drop the row only when neither works.**
+
+## Action
+
+**1. Audit and standardise**
+- Profiled the raw file with `ydata-profiling`, `info()` and value counts, which revealed the placeholders and that every item sells at one fixed price.
+- Converted every `ERROR` / `UNKNOWN` to `NaN` first, so later steps saw the true extent of missing data.
+- Converted numeric and date columns with `errors='coerce'`, so bad values became blanks instead of crashing the pipeline.
+
+**2. Recover values exactly, using the menu's unit economics**
+
+| Missing field | Method | Result |
 |---|---|---|
-| `Price Per Unit` | Mode by Item group | Items have fixed menu prices; mode recovery is deterministic |
-| `Item` | Reverse price-to-item map (unique-price-only) | Only applied where a price maps to exactly one item, to avoid ambiguous assignment |
-| `Total Spent` | `Quantity * Price Per Unit` | Unit-economics recovery preserves financial integrity |
-| `Quantity` | `Total Spent / Price Per Unit` | Inverse recovery from a verified total |
-| `Payment Method` | Random distribution-proportional sampling | Preserves the real observed split; avoids inflating the modal category |
-| `Location` | Random distribution-proportional sampling | Same reasoning as Payment Method |
-| `Item` (residual) | Random distribution-proportional sampling | Same reasoning as above, applied after the price-based recovery step |
-| `Quantity`, `Price Per Unit`, `Total Spent`, `Transaction Date` (residual) | Drop rows | Filling numeric columns with a string placeholder reverts them to text and breaks all downstream math; affected volume was ~0.7% for numeric fields, 4.6% for dates |
+| Price Per Unit | Item's fixed menu price | 533 missing down to 54 |
+| Item | Reverse price-to-item map, only for prices unique to one item ($3 and $4 are shared, so skipped) | 969 down to 501 |
+| Total Spent / Quantity | Total = Quantity x Price, Quantity = Total / Price | 502 and 479 missing down to 23 each |
+| Price Per Unit (no item) | Total / Quantity, accepted only if it matches a menu price | Recovered before any guessing |
 
-### 5. Outlier Detection and Handling
-- Visualized distributions using boxplots.
-- Applied the IQR method across `Quantity`, `Price Per Unit`, and `Total Spent`; 259 rows flagged in `Total Spent` (2.7% of cleaned data).
-- Validated flagged rows against business domain logic: the maximum physically possible transaction is 5 units x $5.00 = $25.00. Every flagged row topped out at exactly $25.00.
-- Decision: **retained** all flagged outliers, they are legitimate high-value orders, not corrupted data. No capping applied.
+**3. Estimate only what can't be calculated**
+- Payment Method and Location have no link to any other column, so I used **distribution-preserving random imputation** (each blank drawn from the observed mix). I rejected mode imputation, which would have pushed a third of the rows into one category and distorted every share-based chart.
+- For the remaining Items, the draw is **restricted to items sold at the row's known price** (a $3.00 row can only become Cake or Juice).
+- A second recovery pass then filled the remaining prices from items and saved 4 more rows.
 
-### 6. Duplicate Check
-- Confirmed zero duplicate rows in the cleaned dataset.
+**4. Remove, validate, and check outliers**
+- Dropped 482 rows (4.82%) that could not be recovered, mostly the 460 with no date. A date can't be calculated, and a text placeholder in a numeric column would break every sum.
+- The IQR method flagged 259 orders at $25.00 (2.7%). Every one was 5 Salads x $5.00, the largest legitimate order, so all were **kept**: unusual is not the same as wrong.
+- Before saving, `assert` checks stop the notebook if any rule fails.
 
----
+**5. Found and fixed a bug in my own pipeline**
 
-## Exploratory Data Analysis
+Testing the output against the business rules (not just counting blanks) showed that **355 rows broke them**. 316 had an item at the wrong price (e.g. "Coffee at $3.00"), and 39 had Quantity x Price not equal to Total.
 
-| Analysis | Finding |
-|---|---|
-| Revenue by item | Salad, Sandwich, and Smoothie lead by total revenue; Cookie is lowest. Transaction *counts* per item are far more even (1,102–1,275 across all 8 items), so revenue ranking is driven by unit price and quantity mix, not one item being ordered disproportionately more often |
-| Transaction value distribution | 57% of transactions fall between $3 and $10 |
-| Daily/monthly sales trend | Flat across all 12 months and all 7 days of the week, no growth trend, seasonality, or weekday effect detected |
-| Payment method share | Near-even three-way split: Credit Card 33.5%, Digital Wallet 33.5%, Cash 32.9%. No method meaningfully outperforms another |
-| Location share | Near-even split: In-store 50.6%, Takeaway 49.4%. Neither channel dominates |
-| Revenue by item and payment method | Proportional across payment types, consistent with the near-even overall split above |
+The cause was one step: the Item fill drew from all items and ignored the price already known. I made it price-aware and calculated prices from Total / Quantity first. That fixed all 355 rows with no extra rows dropped. I also seeded every random step, and converted three cells whose syntax errors stopped "Run all" before the save step.
 
-**Note on interpretation:** Payment Method, Location, and residual Item values were partly filled using distribution-preserving random imputation (covering roughly 32–40% of two of those columns). That method was deliberately chosen to avoid distorting the true split, so the near-even results above are the expected outcome of that choice, not necessarily proof of an underlying real-world 50/50 customer behavior. Combined with the flat time trend and the near-uniform item transaction counts, the overall pattern is consistent with data generated to be statistically uniform rather than sampled from an operating cafe. Read the business recommendations below with that in mind.
+**6. Built and reconciled the dashboard**
+- Power BI report with four KPI cards, Location and Payment Method slicers, and revenue by item, day of week and month.
+- Refreshed it on the corrected file and replaced two hand-typed average lines with calculated ones, so every figure now updates with the data.
 
----
+## Result
 
-## Business Recommendations
+| Measure | Raw file | Cleaned file |
+|---|---|---|
+| Rows | 10,000 | 9,518 (482 removed) |
+| Missing cells | 10,082 | 0 |
+| Columns with correct type | 0 of 8 | 8 of 8 |
+| Item vs Price correlation | 0.80 | 1.00 (one price per item, confirmed) |
+| Rows breaking Quantity x Price = Total | not checkable | 0 |
 
-1. **Fix upstream data collection first.** The volume of `ERROR` and `UNKNOWN` placeholders, and the fact that Payment Method and Location were missing in 32–40% of rows, points to a Point-of-Sale data entry gap at the source. This is the highest-confidence, most actionable finding in the project, independent of any of the imputed splits above.
-2. **Don't optimize for one payment channel or location yet.** With Credit Card, Digital Wallet, and Cash essentially tied, and In-store/Takeaway close to a 50/50 split, there isn't a clear channel to prioritize based on this dataset. A real, non-imputed sample would be needed before committing resources to one channel over another.
-3. **The flat sales trend is worth investigating operationally, not just imputing around.** Whether the flatness reflects a real demand ceiling or is itself an artifact of how this dataset was generated, either explanation is worth confirming against a live POS feed before drawing further business conclusions from it.
+**What the data shows**
+- **Revenue follows price, not volume.** Every item sells between 1,141 and 1,243 times, so Salad ($5.00) earns the most ($18,220, 21.5% of revenue) and Cookie ($1.00) the least.
+- **Most orders are small:** 57% of transactions are between $3 and $10. The average order is $8.92.
+- **Sales are flat:** monthly revenue varies about 10% around a $7,075 average, and daily revenue about 6%, with no trend or seasonality.
+- **No dominant channel:** Digital Wallet 33.8%, Credit Card 33.3%, Cash 33.0%; Takeaway 50.7%, In-store 49.3%.
+
+**How far to trust those findings:** a third or more of Payment Method and Location was imputed with a method designed to preserve the observed mix, so near-even splits are partly the expected result of that choice. Together with the flat trend and near-uniform item counts, the pattern suggests synthetic data rather than a real cafe. I state the findings at that confidence level.
+
+**Recommendations**
+1. **Fix data capture at the till first.** Making Payment Method and Location mandatory fields is the highest-confidence, most actionable finding, whatever the imputed splits show.
+2. **Don't favour a payment channel or location yet.** The splits are essentially tied; a non-imputed sample is needed first.
+3. **Check the flat trend against a live POS feed** before treating it as a real demand ceiling.
 
 ---
 
@@ -98,15 +98,10 @@ Interactive Power BI report built on the cleaned dataset: four KPI cards (Total 
 
 | Tool | Purpose |
 |---|---|
-| Python 3 | Core language |
-| pandas | Data manipulation and cleaning |
-| numpy | Numerical operations and NaN handling |
-| matplotlib / seaborn | Static visualizations |
-| plotly | Interactive sales trend chart |
-| ydata-profiling | Automated before/after profiling reports |
-| Power BI | Interactive dashboard on the cleaned dataset |
-
----
+| Python 3 (pandas, NumPy) | Cleaning, imputation, validation |
+| Matplotlib, Seaborn, Plotly | Static and interactive charts |
+| ydata-profiling | Before and after profiling reports |
+| Power BI (DAX) | Interactive dashboard |
 
 ## Repository Structure
 
@@ -114,32 +109,30 @@ Interactive Power BI report built on the cleaned dataset: four KPI cards (Total 
 cafe-sales-data-cleaning-eda/
 |
 |-- Data/
-|   |-- dirty_cafe_sales_csv.xls        # Raw input data
-|   |-- Clean_Cafe_Sales_Data.csv       # Cleaned output data
+|   |-- dirty_cafe_sales_csv.xls                      # Raw input data
+|   |-- Clean_Cafe_Sales_Data.csv                     # Cleaned output (9,518 rows)
 |
 |-- Doc/
-|   |-- Cafe_Sales_Project_Documentation.docx   # Full write-up: cleaning rationale, EDA, dashboard build
-|   |-- Cafe_sales_overview.PNG                 # Dashboard screenshot
+|   |-- Cafe_Sales_Data_Cleaning_Documentation.pdf    # Full STAR write-up with before/after charts
+|   |-- Cafe_sales_overview.PNG                       # Dashboard screenshot
 |
-|-- Dirty_Cafe_Sales_Data_cleaning.ipynb        # Full cleaning + EDA notebook
-|-- Cafe_Sales_Dashboard.pbix                   # Power BI report file
+|-- Dirty_Cafe_Sales_Data_cleaning.ipynb              # Cleaning + EDA notebook
+|-- Cafe_Sales_Dashboard.pbix                         # Power BI report
 |-- README.md
 ```
-
----
 
 ## How to Run
 
 1. Clone the repository.
 2. Install dependencies:
    ```bash
-   pip install pandas numpy matplotlib seaborn plotly ydata-profiling
+   pip install pandas numpy matplotlib seaborn plotly ydata-profiling "numba>=0.64"
    ```
-3. Open `Dirty_Cafe_Sales_Data_cleaning.ipynb` in Jupyter or Google Colab.
-4. Run all cells sequentially. The notebook is structured to be executed top to bottom with outputs displayed at each stage.
-5. To explore the dashboard, open `Cafe_Sales_Dashboard.pbix` in Power BI Desktop (free), or view the screenshot above for a static preview.
+   Numba 0.64 or later is needed for `ydata-profiling` to work with NumPy 2.4 (e.g. in current Google Colab).
+3. Open `Dirty_Cafe_Sales_Data_cleaning.ipynb` in Jupyter or Colab and choose **Run all**. The validation cell stops the notebook if any cleaning rule fails.
+4. Open `Cafe_Sales_Dashboard.pbix` in Power BI Desktop (free) to explore the dashboard, or see the screenshot above.
 
----
+Full details of every step, the bug fix and the before/after profiling charts are in [`Doc/Cafe_Sales_Data_Cleaning_Documentation.pdf`](Doc/Cafe_Sales_Data_Cleaning_Documentation.pdf).
 
 ## Author
 
